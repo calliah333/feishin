@@ -2,86 +2,49 @@ import { PostProcessorModule } from 'i18next';
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 
-import ar from './locales/ar.json';
-import bg from './locales/bg.json';
-import ca from './locales/ca.json';
-import cs from './locales/cs.json';
-import da from './locales/da.json';
-import de from './locales/de.json';
 import en from './locales/en.json';
-import es from './locales/es.json';
-import et from './locales/et.json';
-import eu from './locales/eu.json';
-import fa from './locales/fa.json';
-import fi from './locales/fi.json';
-import fr from './locales/fr.json';
-import gl from './locales/gl.json';
-import hu from './locales/hu.json';
-import id from './locales/id.json';
-import it from './locales/it.json';
-import ja from './locales/ja.json';
-import ko from './locales/ko.json';
-import lv from './locales/lv.json';
-import nbNO from './locales/nb-NO.json';
-import nl from './locales/nl.json';
-import nn from './locales/nn.json';
-import pl from './locales/pl.json';
-import ptBr from './locales/pt-BR.json';
-import pt from './locales/pt.json';
-import ro from './locales/ro.json';
-import ru from './locales/ru.json';
-import sk from './locales/sk.json';
-import sl from './locales/sl.json';
-import sr from './locales/sr.json';
-import sv from './locales/sv.json';
-import ta from './locales/ta.json';
-import th from './locales/th.json';
-import tl from './locales/tl.json';
-import tr from './locales/tr.json';
-import uk from './locales/uk.json';
-import zhHans from './locales/zh-Hans.json';
-import zhHant from './locales/zh-Hant.json';
 
-const resources = {
-    ar: { translation: ar },
-    bg: { translation: bg },
-    ca: { translation: ca },
-    cs: { translation: cs },
-    da: { translation: da },
-    de: { translation: de },
-    en: { translation: en },
-    es: { translation: es },
-    et: { translation: et },
-    eu: { translation: eu },
-    fa: { translation: fa },
-    fi: { translation: fi },
-    fr: { translation: fr },
-    gl: { translation: gl },
-    hu: { translation: hu },
-    id: { translation: id },
-    it: { translation: it },
-    ja: { translation: ja },
-    ko: { translation: ko },
-    lv: { translation: lv },
-    'nb-NO': { translation: nbNO },
-    nl: { translation: nl },
-    nn: { translation: nn },
-    pl: { translation: pl },
-    pt: { translation: pt },
-    'pt-BR': { translation: ptBr },
-    ro: { translation: ro },
-    ru: { translation: ru },
-    sk: { translation: sk },
-    sl: { translation: sl },
-    sr: { translation: sr },
-    sv: { translation: sv },
-    ta: { translation: ta },
-    th: { translation: th },
-    tl: { translation: tl },
-    tr: { translation: tr },
-    uk: { translation: uk },
-    'zh-Hans': { translation: zhHans },
-    'zh-Hant': { translation: zhHant },
+// Only English (the fallback) is bundled; other locales are split into their own chunks and
+// loaded on demand by `changeLanguage`.
+const localeLoaders: Record<string, () => Promise<{ default: Record<string, unknown> }>> = {
+    ar: () => import('./locales/ar.json'),
+    bg: () => import('./locales/bg.json'),
+    ca: () => import('./locales/ca.json'),
+    cs: () => import('./locales/cs.json'),
+    da: () => import('./locales/da.json'),
+    de: () => import('./locales/de.json'),
+    es: () => import('./locales/es.json'),
+    et: () => import('./locales/et.json'),
+    eu: () => import('./locales/eu.json'),
+    fa: () => import('./locales/fa.json'),
+    fi: () => import('./locales/fi.json'),
+    fr: () => import('./locales/fr.json'),
+    gl: () => import('./locales/gl.json'),
+    hu: () => import('./locales/hu.json'),
+    id: () => import('./locales/id.json'),
+    it: () => import('./locales/it.json'),
+    ja: () => import('./locales/ja.json'),
+    ko: () => import('./locales/ko.json'),
+    lv: () => import('./locales/lv.json'),
+    'nb-NO': () => import('./locales/nb-NO.json'),
+    nl: () => import('./locales/nl.json'),
+    nn: () => import('./locales/nn.json'),
+    pl: () => import('./locales/pl.json'),
+    pt: () => import('./locales/pt.json'),
+    'pt-BR': () => import('./locales/pt-BR.json'),
+    ro: () => import('./locales/ro.json'),
+    ru: () => import('./locales/ru.json'),
+    sk: () => import('./locales/sk.json'),
+    sl: () => import('./locales/sl.json'),
+    sr: () => import('./locales/sr.json'),
+    sv: () => import('./locales/sv.json'),
+    ta: () => import('./locales/ta.json'),
+    th: () => import('./locales/th.json'),
+    tl: () => import('./locales/tl.json'),
+    tr: () => import('./locales/tr.json'),
+    uk: () => import('./locales/uk.json'),
+    'zh-Hans': () => import('./locales/zh-Hans.json'),
+    'zh-Hant': () => import('./locales/zh-Hant.json'),
 };
 
 export const languages = [
@@ -299,7 +262,18 @@ i18n.use(lowerCasePostProcessor)
         interpolation: {
             escapeValue: false, // react already safes from xss
         },
-        resources,
+        resources: { en: { translation: en } },
     });
+
+export const changeLanguage = async (language: string) => {
+    const loadLocale = localeLoaders[language];
+
+    if (loadLocale && !i18n.hasResourceBundle(language, 'translation')) {
+        const locale = await loadLocale();
+        i18n.addResourceBundle(language, 'translation', locale.default);
+    }
+
+    return i18n.changeLanguage(language);
+};
 
 export default i18n;
