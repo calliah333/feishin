@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import {
+    acquireCachedImage,
+    releaseCachedImage,
+    storeCachedImage,
+} from '/@/shared/components/image/image-blob-cache';
 import { ImageRequest } from '/@/shared/types/domain-types';
 
 type FetchPriority = 'auto' | 'high' | 'low';
@@ -49,19 +54,19 @@ export function useNativeImage({
             abortControllerRef.current = null;
         };
 
-        const revokeObjectUrl = () => {
-            if (!objectUrlRef.current) {
+        const releaseObjectUrl = () => {
+            if (!objectUrlRef.current || !loadedRequestSignatureRef.current) {
                 return;
             }
 
-            URL.revokeObjectURL(objectUrlRef.current);
+            releaseCachedImage(loadedRequestSignatureRef.current);
             objectUrlRef.current = null;
             loadedRequestSignatureRef.current = null;
         };
 
         if (!request || !requestSignature) {
             abortCurrentRequest();
-            revokeObjectUrl();
+            releaseObjectUrl();
             setState({ status: 'idle' });
             return;
         }
@@ -82,7 +87,16 @@ export function useNativeImage({
         }
 
         abortCurrentRequest();
-        revokeObjectUrl();
+        releaseObjectUrl();
+
+        const cachedUrl = acquireCachedImage(requestSignature);
+        if (cachedUrl) {
+            objectUrlRef.current = cachedUrl;
+            loadedRequestSignatureRef.current = requestSignature;
+            setState({ displaySrc: cachedUrl, status: 'loaded' });
+            return;
+        }
+
         setState({ status: 'loading' });
 
         const abortController = new AbortController();
@@ -112,7 +126,7 @@ export function useNativeImage({
                     return;
                 }
 
-                const objectUrl = URL.createObjectURL(blob);
+                const objectUrl = storeCachedImage(requestSignature, blob);
                 objectUrlRef.current = objectUrl;
                 loadedRequestSignatureRef.current = requestSignature;
                 setState({ displaySrc: objectUrl, status: 'loaded' });
@@ -121,7 +135,7 @@ export function useNativeImage({
                     return;
                 }
 
-                revokeObjectUrl();
+                releaseObjectUrl();
                 setState({ status: 'error' });
                 onFetchErrorRef.current?.();
             } finally {
@@ -144,8 +158,8 @@ export function useNativeImage({
         return () => {
             abortControllerRef.current?.abort();
 
-            if (objectUrlRef.current) {
-                URL.revokeObjectURL(objectUrlRef.current);
+            if (objectUrlRef.current && loadedRequestSignatureRef.current) {
+                releaseCachedImage(loadedRequestSignatureRef.current);
             }
         };
     }, []);
