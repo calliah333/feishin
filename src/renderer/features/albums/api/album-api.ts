@@ -10,6 +10,9 @@ import { AlbumDetailQuery, AlbumListQuery, ListCountQuery } from '/@/shared/type
 export const albumQueries = {
     detail: (args: QueryHookArgs<AlbumDetailQuery>) => {
         return queryOptions({
+            // Keep detail data across back/forward navigation so the suspense route does not
+            // re-enter its loading state; optimistic favorite/rating updates patch this cache.
+            gcTime: 1000 * 60 * 10,
             queryFn: ({ signal }) => {
                 return api.controller.getAlbumDetail({
                     apiClientProps: { serverId: args.serverId, signal },
@@ -17,6 +20,7 @@ export const albumQueries = {
                 });
             },
             queryKey: queryKeys.albums.detail(args.serverId, args.query),
+            staleTime: 1000 * 60,
             ...args.options,
         });
     },

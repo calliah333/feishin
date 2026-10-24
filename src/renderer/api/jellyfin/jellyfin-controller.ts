@@ -605,32 +605,33 @@ export const JellyfinController: InternalControllerEndpoint = {
             throw new Error('No userId found');
         }
 
-        const res = await jfApiClient(apiClientProps).getAlbumDetail({
-            params: {
-                id: query.id,
-                userId: apiClientProps.server.userId,
-            },
-            query: {
-                Fields: JF_FIELDS.ALBUM_DETAIL,
-            },
-        });
-
-        const songsRes = await jfApiClient(apiClientProps).getSongList({
-            params: {
-                userId: apiClientProps.server.userId,
-            },
-            query: {
-                EnableUserData: true,
-                Fields: JF_FIELDS.SONG,
-                IncludeItemTypes: getSongItemTypes(apiClientProps.server),
-                ParentId: query.id,
-                Recursive: true,
-                SortBy: 'ParentIndexNumber,IndexNumber,SortName',
-                SortOrder: JFSortOrder.ASC,
-                StartIndex: 0,
-                UserId: apiClientProps.server.userId,
-            },
-        });
+        const [res, songsRes] = await Promise.all([
+            jfApiClient(apiClientProps).getAlbumDetail({
+                params: {
+                    id: query.id,
+                    userId: apiClientProps.server.userId,
+                },
+                query: {
+                    Fields: JF_FIELDS.ALBUM_DETAIL,
+                },
+            }),
+            jfApiClient(apiClientProps).getSongList({
+                params: {
+                    userId: apiClientProps.server.userId,
+                },
+                query: {
+                    EnableUserData: true,
+                    Fields: JF_FIELDS.SONG,
+                    IncludeItemTypes: getSongItemTypes(apiClientProps.server),
+                    ParentId: query.id,
+                    Recursive: true,
+                    SortBy: 'ParentIndexNumber,IndexNumber,SortName',
+                    SortOrder: JFSortOrder.ASC,
+                    StartIndex: 0,
+                    UserId: apiClientProps.server.userId,
+                },
+            }),
+        ]);
 
         if (res.status !== 200 || songsRes.status !== 200) {
             throw new Error('Failed to get album detail');
