@@ -6,7 +6,7 @@ import { useRemotePush } from '/@/renderer/features/remote/hooks/use-remote-push
 import { useSetRating } from '/@/renderer/features/shared/hooks/use-set-rating';
 import { useCreateFavorite } from '/@/renderer/features/shared/mutations/create-favorite-mutation';
 import { useDeleteFavorite } from '/@/renderer/features/shared/mutations/delete-favorite-mutation';
-import { usePlayerActions, usePlayerStore, useRemoteSettings } from '/@/renderer/store';
+import { usePlayerActions, usePlayerStoreBase, useRemoteSettings } from '/@/renderer/store';
 import { logger } from '/@/renderer/utils/logger';
 import { toast } from '/@/shared/components/toast/toast';
 import { LibraryItem } from '/@/shared/types/domain-types';
@@ -15,8 +15,7 @@ const remote = isElectron() ? window.api.remote : null;
 const ipc = isElectron() ? window.api.ipc : null;
 
 export const useRemote = () => {
-    const { mediaSkipForward, setVolume } = usePlayerActions();
-    const player = usePlayerStore();
+    const { mediaSeekToTimestamp, mediaSkipForward, setVolume } = usePlayerActions();
 
     const remoteSettings = useRemoteSettings();
     const setRating = useSetRating();
@@ -59,7 +58,7 @@ export const useRemote = () => {
         remote.requestPosition((data: { position: number }) => {
             logger.debug('Remote request position received', { position: data.position });
             const newTime = data.position;
-            player.mediaSeekToTimestamp(newTime);
+            mediaSeekToTimestamp(newTime);
         });
 
         remote.requestSeek((data: { offset: number }) => {
@@ -107,8 +106,8 @@ export const useRemote = () => {
     }, [
         addToFavoritesMutation,
         isRemoteEnabled,
+        mediaSeekToTimestamp,
         mediaSkipForward,
-        player,
         removeFromFavoritesMutation,
         setVolume,
         setRating,
@@ -123,7 +122,7 @@ export const useRemote = () => {
 
         isInitializedRef.current = true;
 
-        const currentSong = player.getCurrentSong();
+        const currentSong = usePlayerStoreBase.getState().getCurrentSong();
 
         if (currentSong) {
             logger.debug('Remote sending initial song', {
@@ -144,7 +143,7 @@ export const useRemote = () => {
 
             remote.updateSong(currentSong, imageUrl);
         }
-    }, [isRemoteEnabled, player]);
+    }, [isRemoteEnabled]);
 };
 
 export const RemoteHook = () => {
