@@ -1,4 +1,5 @@
 import { del, get, set } from 'idb-keyval';
+import throttle from 'lodash/throttle';
 import { useEffect, useState } from 'react';
 import { persist, subscribeWithSelector } from 'zustand/middleware';
 import { createWithEqualityFn } from 'zustand/traditional';
@@ -10,6 +11,15 @@ interface TimestampState {
     timestamp: number;
 }
 
+// Playback engines update the timestamp several times per second; only the latest value matters
+// for resume, so persist at most every few seconds and flush when the page is being hidden/closed.
+const persistTimestamp = throttle((name: string, timestamp: number) => set(name, timestamp), 5000, {
+    leading: true,
+    trailing: true,
+});
+
+window.addEventListener('pagehide', () => persistTimestamp.flush());
+
 const timestampStorage = {
     getItem: async (name: string) => {
         const value = await get(name);
@@ -19,10 +29,11 @@ const timestampStorage = {
         return { state: { timestamp: value }, version: 1 } as const;
     },
     removeItem: async (name: string) => {
+        persistTimestamp.cancel();
         await del(name);
     },
     setItem: async (name: string, value: { state: { timestamp: number }; version?: number }) => {
-        await set(name, value.state.timestamp);
+        persistTimestamp(name, value.state.timestamp);
     },
 };
 
