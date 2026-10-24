@@ -499,6 +499,15 @@ const initialState: State = {
     },
 };
 
+// Selectors call getQueueOrder on every player-store update; rebuilding a queue-length array
+// each time is O(queue) per subscriber. Immer replaces `default`/`songs` on change, so reference
+// equality tells us when the ordered array must be rebuilt. Callers must not mutate `items`.
+let queueOrderCache: null | {
+    defaultIds: string[];
+    items: QueueSong[];
+    songs: Record<string, QueueSong>;
+} = null;
+
 export const usePlayerStoreBase = createWithEqualityFn<PlayerState>()(
     persist(
         subscribeWithSelector(
@@ -939,8 +948,11 @@ export const usePlayerStoreBase = createWithEqualityFn<PlayerState>()(
                         const uniqueIds = new Set(items.map((item) => item._uniqueId));
 
                         const indexesToRemove = new Set<number>();
+                        // removedBefore[i] = number of removed queue positions before position i
+                        const removedBefore: number[] = [];
 
                         state.queue.default.forEach((id, index) => {
+                            removedBefore.push(indexesToRemove.size);
                             if (uniqueIds.has(id)) {
                                 indexesToRemove.add(index);
                             }
@@ -954,16 +966,7 @@ export const usePlayerStoreBase = createWithEqualityFn<PlayerState>()(
                             // Remove indexes from shuffled array and adjust remaining indexes
                             const newShuffled = state.queue.shuffled
                                 .filter((idx) => !indexesToRemove.has(idx))
-                                .map((idx) => {
-                                    // Count how many removed indexes are before this index
-                                    let adjustment = 0;
-                                    for (const removedIdx of indexesToRemove) {
-                                        if (removedIdx < idx) {
-                                            adjustment++;
-                                        }
-                                    }
-                                    return idx - adjustment;
-                                });
+                                .map((idx) => idx - removedBefore[idx]);
                             state.queue.shuffled = newShuffled;
                         } else {
                             state.queue.shuffled = [];
@@ -1099,15 +1102,23 @@ export const usePlayerStoreBase = createWithEqualityFn<PlayerState>()(
                     return { groups, items: queue.items };
                 },
                 getQueueOrder: () => {
-                    const state = get();
-                    const songs = state.queue.songs;
-                    const defaultIds = state.queue.default;
-                    const defaultQueue: QueueSong[] = [];
+                    const { default: defaultIds, songs } = get().queue;
 
-                    for (const id of defaultIds) {
-                        const song = songs[id];
-                        if (song) defaultQueue.push(song);
+                    if (
+                        queueOrderCache?.defaultIds !== defaultIds ||
+                        queueOrderCache.songs !== songs
+                    ) {
+                        const items: QueueSong[] = [];
+
+                        for (const id of defaultIds) {
+                            const song = songs[id];
+                            if (song) items.push(song);
+                        }
+
+                        queueOrderCache = { defaultIds, items, songs };
                     }
+
+                    const defaultQueue = queueOrderCache.items;
 
                     // Always return original order (shuffle only affects playback, not display)
                     return {
@@ -1581,6 +1592,7 @@ export const usePlayerStoreBase = createWithEqualityFn<PlayerState>()(
                     pinAboveUpNext = false,
                 ) => {
                     const itemUniqueIds = items.map((item) => item._uniqueId);
+                    const movedIds = new Set(itemUniqueIds);
 
                     set((state) => {
                         const currentId = get().getCurrentSong()?._uniqueId;
@@ -1602,11 +1614,11 @@ export const usePlayerStoreBase = createWithEqualityFn<PlayerState>()(
 
                         const idsBefore = state.queue.default
                             .slice(0, insertIndex)
-                            .filter((id) => !itemUniqueIds.includes(id));
+                            .filter((id) => !movedIds.has(id));
 
                         const idsAfter = state.queue.default
                             .slice(insertIndex)
-                            .filter((id) => !itemUniqueIds.includes(id));
+                            .filter((id) => !movedIds.has(id));
 
                         const newQueue = [...idsBefore, ...itemUniqueIds, ...idsAfter];
 
@@ -1616,7 +1628,7 @@ export const usePlayerStoreBase = createWithEqualityFn<PlayerState>()(
 
                         if (pinAboveUpNext) {
                             state.queue.priority = state.queue.priority.filter(
-                                (id) => !itemUniqueIds.includes(id),
+                                (id) => !movedIds.has(id),
                             );
                         }
                     });
@@ -1624,15 +1636,14 @@ export const usePlayerStoreBase = createWithEqualityFn<PlayerState>()(
                 moveSelectedToBottom: (items: QueueSong[]) => {
                     set((state) => {
                         const uniqueIds = items.map((item) => item._uniqueId);
+                        const movedIds = new Set(uniqueIds);
 
                         // Add new songs to songs object
                         items.forEach((item) => {
                             state.queue.songs[item._uniqueId] = item;
                         });
 
-                        const filtered = state.queue.default.filter(
-                            (id) => !uniqueIds.includes(id),
-                        );
+                        const filtered = state.queue.default.filter((id) => !movedIds.has(id));
 
                         const newQueue = [...filtered, ...uniqueIds];
 
@@ -1645,6 +1656,7 @@ export const usePlayerStoreBase = createWithEqualityFn<PlayerState>()(
                 moveSelectedToNext: (items: QueueSong[]) => {
                     set((state) => {
                         const uniqueIds = items.map((item) => item._uniqueId);
+                        const movedIds = new Set(uniqueIds);
 
                         // Add new songs to songs object
                         items.forEach((item) => {
@@ -1654,7 +1666,7 @@ export const usePlayerStoreBase = createWithEqualityFn<PlayerState>()(
                         const currentIndex = state.player.index;
                         let beforeCurrent = 0;
                         const filtered = state.queue.default.filter((id, idx) => {
-                            const shouldMove = uniqueIds.includes(id);
+                            const shouldMove = movedIds.has(id);
                             if (shouldMove && idx < currentIndex) {
                                 beforeCurrent++;
                             }
@@ -1686,15 +1698,14 @@ export const usePlayerStoreBase = createWithEqualityFn<PlayerState>()(
                 moveSelectedToTop: (items: QueueSong[]) => {
                     set((state) => {
                         const uniqueIds = items.map((item) => item._uniqueId);
+                        const movedIds = new Set(uniqueIds);
 
                         // Add new songs to songs object
                         items.forEach((item) => {
                             state.queue.songs[item._uniqueId] = item;
                         });
 
-                        const filtered = state.queue.default.filter(
-                            (id) => !uniqueIds.includes(id),
-                        );
+                        const filtered = state.queue.default.filter((id) => !movedIds.has(id));
 
                         const newQueue = [...uniqueIds, ...filtered];
 
@@ -1960,7 +1971,9 @@ export const usePlayerStoreBase = createWithEqualityFn<PlayerState>()(
         ),
         {
             merge: (persistedState: any, currentState: any) => {
-                const merged = merge(currentState, persistedState);
+                // Merge into a fresh object: mutating the live state in place would keep the
+                // `queue.default`/`queue.songs` references unchanged and defeat getQueueOrder's cache.
+                const merged = merge({}, currentState, persistedState);
 
                 if (merged.player) {
                     merged.player.volume = Math.min(100, Math.max(0, merged.player.volume));
@@ -2546,19 +2559,18 @@ function cleanupOrphanedSongs(state: any): boolean {
     const songs = state.queue.songs;
     const songIds = Object.keys(songs);
     let hasOrphans = false;
-    const orphanedIds: string[] = [];
 
     for (const songId of songIds) {
         if (!allQueueIds.has(songId)) {
-            orphanedIds.push(songId);
             hasOrphans = true;
+            break;
         }
     }
 
     if (hasOrphans) {
         const cleanedSongs: Record<string, QueueSong> = {};
         for (const songId of songIds) {
-            if (!orphanedIds.includes(songId)) {
+            if (allQueueIds.has(songId)) {
                 cleanedSongs[songId] = songs[songId];
             }
         }
