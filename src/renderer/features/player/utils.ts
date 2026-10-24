@@ -102,41 +102,37 @@ export const getGenreSongsById = async (args: {
 }) => {
     const { id, query, queryClient, serverId } = args;
 
+    const results = await Promise.all(
+        id.map((genreId) => {
+            const queryFilter: SongListQuery = {
+                genreIds: [genreId],
+                sortBy: SongListSort.GENRE,
+                sortOrder: SortOrder.ASC,
+                startIndex: 0,
+                ...query,
+            };
+
+            return queryClient.fetchQuery({
+                gcTime: 1000 * 60,
+                queryFn: async ({ signal }) =>
+                    api.controller.getSongList({
+                        apiClientProps: {
+                            serverId,
+                            signal,
+                        },
+                        query: queryFilter,
+                    }),
+                queryKey: queryKeys.songs.list(serverId, queryFilter),
+                staleTime: 1000 * 60,
+            });
+        }),
+    );
+
     const data: SongListResponse = {
-        items: [],
+        items: results.flatMap((res) => res!.items),
         startIndex: 0,
         totalRecordCount: 0,
     };
-    for (const genreId of id) {
-        const queryFilter: SongListQuery = {
-            genreIds: [genreId],
-            sortBy: SongListSort.GENRE,
-            sortOrder: SortOrder.ASC,
-            startIndex: 0,
-            ...query,
-        };
-
-        const queryKey = queryKeys.songs.list(serverId, queryFilter);
-
-        const res = await queryClient.fetchQuery({
-            gcTime: 1000 * 60,
-            queryFn: async ({ signal }) =>
-                api.controller.getSongList({
-                    apiClientProps: {
-                        serverId,
-                        signal,
-                    },
-                    query: queryFilter,
-                }),
-            queryKey,
-            staleTime: 1000 * 60,
-        });
-
-        data.items.push(...res!.items);
-        if (data.totalRecordCount) {
-            data.totalRecordCount += res!.totalRecordCount || 0;
-        }
-    }
 
     return data;
 };
